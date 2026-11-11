@@ -1,7 +1,11 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 from streamlit_gsheets import GSheetsConnection
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 st.title("Student Academic Performance Report")
 
@@ -382,3 +386,308 @@ fig_stress = px.bar(
 )
 
 st.plotly_chart(fig_stress, use_container_width=True)
+# 5. RANDOM FOREST REGRESSION
+# =====================================================
+
+st.header("5. Machine Learning - Random Forest Regression")
+
+st.write(
+    "This model predicts students' midterm grades using "
+    "academic habits, sleep, stress, and previous academic performance."
+)
+
+# -----------------------------------------------------
+# VARIABLES USED IN THE MODEL
+# -----------------------------------------------------
+
+features = [
+    age,
+    courses,
+    study_hours,
+    final_grade,
+    sleep_hours,
+    stress
+]
+
+target = midterm_grade
+
+
+# -----------------------------------------------------
+# PREPARE DATA
+# -----------------------------------------------------
+
+ml_data = data[features + [target]].copy()
+
+# Convert everything to numeric
+for column in features + [target]:
+    ml_data[column] = pd.to_numeric(
+        ml_data[column],
+        errors="coerce"
+    )
+
+# Remove rows with missing information
+ml_data = ml_data.dropna()
+
+
+# Show how many responses are being used
+st.write("Responses used in the model:", len(ml_data))
+
+
+# -----------------------------------------------------
+# CHECK SAMPLE SIZE
+# -----------------------------------------------------
+
+if len(ml_data) < 10:
+
+    st.warning(
+        "There are not enough complete responses to train "
+        "the model reliably. More responses are recommended."
+    )
+
+else:
+
+    # -------------------------------------------------
+    # X AND y
+    # -------------------------------------------------
+
+    X = ml_data[features]
+
+    y = ml_data[target]
+
+
+    # -------------------------------------------------
+    # TRAIN AND TEST DATA
+    # -------------------------------------------------
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=0.20,
+        random_state=42
+    )
+
+
+    # -------------------------------------------------
+    # RANDOM FOREST MODEL
+    # -------------------------------------------------
+
+    model = RandomForestRegressor(
+        n_estimators=300,
+        random_state=42
+    )
+
+    model.fit(X_train, y_train)
+
+
+    # -------------------------------------------------
+    # PREDICTIONS
+    # -------------------------------------------------
+
+    predictions = model.predict(X_test)
+
+
+    # -------------------------------------------------
+    # MODEL RESULTS
+    # -------------------------------------------------
+
+    mae = mean_absolute_error(
+        y_test,
+        predictions
+    )
+
+    rmse = np.sqrt(
+        mean_squared_error(
+            y_test,
+            predictions
+        )
+    )
+
+    r2 = r2_score(
+        y_test,
+        predictions
+    )
+
+
+    st.subheader("Model Performance")
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "MAE",
+        f"{mae:.2f}"
+    )
+
+    col2.metric(
+        "RMSE",
+        f"{rmse:.2f}"
+    )
+
+    col3.metric(
+        "R²",
+        f"{r2:.2f}"
+    )
+
+
+    # -------------------------------------------------
+    # ACTUAL VS PREDICTED VALUES
+    # -------------------------------------------------
+
+    results = pd.DataFrame({
+        "Actual Grade": y_test.values,
+        "Predicted Grade": predictions
+    })
+
+    results["Absolute Error"] = abs(
+        results["Actual Grade"]
+        - results["Predicted Grade"]
+    )
+
+    st.subheader("Actual vs Predicted Grades")
+
+    st.dataframe(
+        results,
+        use_container_width=True
+    )
+
+
+    # -------------------------------------------------
+    # GRAPH: ACTUAL VS PREDICTED
+    # -------------------------------------------------
+
+    fig_predictions = px.scatter(
+        results,
+        x="Actual Grade",
+        y="Predicted Grade",
+        title="Actual vs Predicted Grades"
+    )
+
+    minimum = min(
+        results["Actual Grade"].min(),
+        results["Predicted Grade"].min()
+    )
+
+    maximum = max(
+        results["Actual Grade"].max(),
+        results["Predicted Grade"].max()
+    )
+
+    fig_predictions.add_shape(
+        type="line",
+        x0=minimum,
+        y0=minimum,
+        x1=maximum,
+        y1=maximum,
+        line=dict(dash="dash")
+    )
+
+    st.plotly_chart(
+        fig_predictions,
+        use_container_width=True
+    )
+
+
+    # -------------------------------------------------
+    # FEATURE IMPORTANCE
+    # -------------------------------------------------
+
+    st.subheader("Most Important Variables")
+
+    importance = pd.DataFrame({
+        "Variable": features,
+        "Importance": model.feature_importances_
+    })
+
+    importance["Importance (%)"] = (
+        importance["Importance"] * 100
+    )
+
+    importance = importance.sort_values(
+        by="Importance (%)",
+        ascending=False
+    )
+
+    st.dataframe(
+        importance,
+        use_container_width=True
+    )
+
+    fig_importance = px.bar(
+        importance,
+        x="Importance (%)",
+        y="Variable",
+        orientation="h",
+        title="Feature Importance - Random Forest"
+    )
+
+    fig_importance.update_layout(
+        yaxis={"categoryorder": "total ascending"}
+    )
+
+    st.plotly_chart(
+        fig_importance,
+        use_container_width=True
+    )
+
+
+    # -------------------------------------------------
+    # TRY A NEW PREDICTION
+    # -------------------------------------------------
+
+    st.subheader("Predict a Student's Grade")
+
+    st.write(
+        "Enter the characteristics of a student "
+        "to obtain a predicted midterm grade."
+    )
+
+    new_age = st.number_input(
+        "Age",
+        value=float(ml_data[age].median())
+    )
+
+    new_courses = st.number_input(
+        "Number of courses",
+        value=float(ml_data[courses].median())
+    )
+
+    new_study_hours = st.number_input(
+        "Study hours per week",
+        value=float(ml_data[study_hours].median())
+    )
+
+    new_previous_grade = st.number_input(
+        "Final grade last semester",
+        value=float(ml_data[final_grade].median())
+    )
+
+    new_sleep = st.number_input(
+        "Hours of sleep",
+        value=float(ml_data[sleep_hours].median())
+    )
+
+    new_stress = st.number_input(
+        "Stress level",
+        value=float(ml_data[stress].median())
+    )
+
+
+    new_student = pd.DataFrame({
+        age: [new_age],
+        courses: [new_courses],
+        study_hours: [new_study_hours],
+        final_grade: [new_previous_grade],
+        sleep_hours: [new_sleep],
+        stress: [new_stress]
+    })
+
+
+    predicted_grade = model.predict(
+        new_student
+    )[0]
+
+
+    st.metric(
+        "Predicted Midterm Grade",
+        f"{predicted_grade:.2f}"
+    )
+    
